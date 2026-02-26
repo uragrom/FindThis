@@ -1,0 +1,7 @@
+#findthis-root {
+  position: fixed;
+  top: 0; left: 0;
+  width: 0; height: 0;
+  z-index: 2147483647;
+  pointer-events: none;
+}

@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title data-i18n="optTitle">FindThis — Settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="container">
+    <h1>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="28" height="28"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      FindThis
+    </h1>
+
+    <section>
+      <h2 data-i18n="optAppearance">Appearance</h2>
+
+      <label data-i18n="optTheme">Theme</label>
+      <div class="radio-group" id="themeGroup">
+        <label><input type="radio" name="theme" value="auto"> <span data-i18n="optThemeAuto">Auto (system)</span></label>
+        <label><input type="radio" name="theme" value="light"> <span data-i18n="optThemeLight">Light</span></label>
+        <label><input type="radio" name="theme" value="dark"> <span data-i18n="optThemeDark">Dark</span></label>
+      </div>
+
+      <label data-i18n="optWindowSize">Default window size</label>
+      <div class="size-row">
+        <div class="size-field">
+          <span data-i18n="optWidth">Width</span>
+          <input type="number" id="panelWidth" min="300" max="1200" step="10">
+          <span>px</span>
+        </div>
+        <div class="size-field">
+          <span data-i18n="optHeight">Height</span>
+          <input type="number" id="panelHeight" min="250" max="900" step="10">
+          <span>px</span>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2 data-i18n="optBehavior">Behavior</h2>
+
+      <label data-i18n="optSearchEngine">Search engine</label>
+      <select id="searchEngine">
+        <option value="google">Google</option>
+        <option value="duckduckgo">DuckDuckGo</option>
+        <option value="bing">Bing</option>
+        <option value="yandex">Yandex</option>
+      </select>
+
+      <label data-i18n="optMiddleClick">Middle click (scroll wheel)</label>
+      <div class="radio-group" id="mcGroup">
+        <label><input type="radio" name="middleClick" value="close"> <span data-i18n="optMcClose">Open tab &amp; close mini-window</span></label>
+        <label><input type="radio" name="middleClick" value="background"> <span data-i18n="optMcBackground">Open tab in background &amp; keep mini-window</span></label>
+      </div>
+
+      <label data-i18n="optLinksInPanel">Open new tabs inside mini-window</label>
+      <div class="radio-group" id="linksGroup">
+        <label><input type="radio" name="linksInPanel" value="yes"> <span data-i18n="optLinksInPanelOn">Yes — intercept new tabs into panel</span></label>
+        <label><input type="radio" name="linksInPanel" value="no"> <span data-i18n="optLinksInPanelOff">No — open normally</span></label>
+      </div>
+    </section>
+
+    <div class="actions">
+      <button id="btnReset" class="secondary" data-i18n="optReset">Reset to defaults</button>
+      <button id="btnSave" class="primary" data-i18n="optSave">Save</button>
+    </div>
+    <div id="toast" class="toast" data-i18n="optSaved">Settings saved</div>
+  </div>
+  <script src="options.js"></script>
+</body>
+</html>

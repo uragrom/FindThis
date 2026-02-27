@@ -1,31 +1,33 @@
 /**
  * FindThis — Content Script
- *
- * Middle-click on header → open current URL in tab (handled here).
- * Middle-click on links inside iframe → Firefox opens tab natively,
- *   background.js handles the rest via tabs.onCreated.
+ * v1.2: multiple panels, link preview, hover-to-preview.
  */
 (function () {
   "use strict";
   if (window.__findThisLoaded) return;
   window.__findThisLoaded = true;
 
-  var CONTAINER_ID = "findthis-root";
-  var shadowRef = null;
+  var panelCounter = 0;
+  var panels = {};
   var currentSettings = {
-    theme: "auto", panelWidth: 520, panelHeight: 420, middleClick: "close"
+    theme: "auto", panelWidth: 520, panelHeight: 420,
+    middleClick: "close", hoverPreview: false, hoverDelay: 2
   };
+  var hoverTimer = null;
+
+  function loadSettings() {
+    try {
+      browser.runtime.sendMessage({ action: "getSettings" }).then(function (s) {
+        if (s) currentSettings = Object.assign(currentSettings, s);
+      }).catch(function () {});
+    } catch (e) {}
+  }
+  loadSettings();
+  browser.storage.onChanged.addListener(function () { loadSettings(); });
 
   function m(id) { try { return browser.i18n.getMessage(id) || id; } catch (e) { return id; } }
   function notifyBg(action, data) {
     try { browser.runtime.sendMessage(Object.assign({ action: action }, data || {})); } catch (e) {}
-  }
-
-  function destroyPanel() {
-    var el = document.getElementById(CONTAINER_ID);
-    if (el) el.remove();
-    shadowRef = null;
-    notifyBg("panelClosed");
   }
 
   function isDark(theme) {
@@ -34,39 +36,51 @@
     return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
   }
 
-  function createPanel(searchUrl, selectionText, settings) {
-    currentSettings = Object.assign(currentSettings, settings || {});
-    destroyPanel();
+  function getColors(dark) {
+    return dark
+      ? { bg:"#2b2b2b", header:"#333", border:"#444", fg:"#ddd", fg2:"#aaa", btnBg:"#3a3a3a", btnBorder:"#555",
+          btnHover:"#4a4a4a", closeBg:"#444", closeHover:"#555", body:"#252525", loader:"#333",
+          spinBorder:"#444", spinTop:"#6eaaff", accent:"#6eaaff", resize:"rgba(110,170,255,.1)", shadow:.35 }
+      : { bg:"#fff", header:"#f8f9fa", border:"#e0e3e6", fg:"#333", fg2:"#666", btnBg:"#fff", btnBorder:"#d0d5da",
+          btnHover:"#e9ecef", closeBg:"transparent", closeHover:"#dee2e6", body:"#f1f3f4", loader:"#fff",
+          spinBorder:"#e0e3e6", spinTop:"#1a73e8", accent:"#1a73e8", resize:"rgba(26,115,232,.08)", shadow:.18 };
+  }
 
+  function destroyPanel(id) {
+    var el = document.getElementById(id);
+    if (el) el.remove();
+    delete panels[id];
+    if (!Object.keys(panels).length) notifyBg("allPanelsClosed");
+  }
+
+  function destroyAllPanels() {
+    Object.keys(panels).forEach(destroyPanel);
+  }
+
+  function buildPanel(url, titleText, labelKey, posRect) {
     var dark = isDark(currentSettings.theme);
     var pw = currentSettings.panelWidth || 520;
     var ph = currentSettings.panelHeight || 420;
+    var c = getColors(dark);
+    var id = "findthis-panel-" + (++panelCounter);
 
     var host = document.createElement("div");
-    host.id = CONTAINER_ID;
-    host.style.cssText = "position:fixed;top:0;left:0;width:0;height:0;z-index:2147483647;pointer-events:none;";
+    host.id = id;
+    host.style.cssText = "position:fixed;top:0;left:0;width:0;height:0;z-index:" + (2147483640 + panelCounter) + ";pointer-events:none;";
     (document.body || document.documentElement).appendChild(host);
 
     var shadow = host.attachShadow({ mode: "open" });
-    shadowRef = shadow;
-
-    var c = dark
-      ? { bg:"#2b2b2b", header:"#333", border:"#444", fg:"#ddd", fg2:"#aaa", btnBg:"#3a3a3a", btnBorder:"#555",
-          btnHover:"#4a4a4a", closeBg:"#444", closeHover:"#555", body:"#252525", loader:"#333",
-          spinBorder:"#444", spinTop:"#6eaaff", accent:"#6eaaff", resize:"rgba(110,170,255,.1)" }
-      : { bg:"#fff", header:"#f8f9fa", border:"#e0e3e6", fg:"#333", fg2:"#666", btnBg:"#fff", btnBorder:"#d0d5da",
-          btnHover:"#e9ecef", closeBg:"transparent", closeHover:"#dee2e6", body:"#f1f3f4", loader:"#fff",
-          spinBorder:"#e0e3e6", spinTop:"#1a73e8", accent:"#1a73e8", resize:"rgba(26,115,232,.08)" };
+    panels[id] = { host: host, shadow: shadow };
 
     var style = document.createElement("style");
     style.textContent = [
       ":host{position:fixed;top:0;left:0;width:0;height:0;z-index:2147483647;pointer-events:none}",
       ".ft{position:fixed;width:"+pw+"px;height:"+ph+"px;min-width:300px;min-height:260px;background:"+c.bg+";border-radius:12px;" +
-        "box-shadow:0 12px 40px rgba(0,0,0,"+(dark?.35:.18)+"),0 0 0 1px "+c.border+";" +
+        "box-shadow:0 12px 40px rgba(0,0,0,"+c.shadow+"),0 0 0 1px "+c.border+";" +
         "display:flex;flex-direction:column;overflow:hidden;font-family:system-ui,-apple-system,sans-serif;pointer-events:auto;z-index:2147483647}",
       ".hd{display:flex;align-items:center;justify-content:space-between;padding:7px 8px 7px 12px;" +
         "background:"+c.header+";border-bottom:1px solid "+c.border+";cursor:move;user-select:none;flex-shrink:0}",
-      ".ti{display:flex;align-items:center;gap:7px;color:"+c.fg+";font-size:13px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:55%}",
+      ".ti{display:flex;align-items:center;gap:7px;color:"+c.fg+";font-size:13px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:50%}",
       ".ti svg{width:16px;height:16px;flex-shrink:0;stroke:"+c.accent+"}",
       ".btns{display:flex;align-items:center;gap:4px}",
       ".btn{padding:4px 9px;font-size:11px;border:1px solid "+c.btnBorder+";background:"+c.btnBg+";" +
@@ -98,13 +112,14 @@
     var title = document.createElement("span"); title.className = "ti";
     var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.setAttribute("viewBox", "0 0 24 24"); svg.setAttribute("fill", "none"); svg.setAttribute("stroke-width", "2");
-    var circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-    circle.setAttribute("cx", "11"); circle.setAttribute("cy", "11"); circle.setAttribute("r", "8");
-    var path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    path.setAttribute("d", "m21 21-4.35-4.35");
-    svg.appendChild(circle); svg.appendChild(path);
+    var circ = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    circ.setAttribute("cx", "11"); circ.setAttribute("cy", "11"); circ.setAttribute("r", "8");
+    var pth = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    pth.setAttribute("d", "m21 21-4.35-4.35");
+    svg.appendChild(circ); svg.appendChild(pth);
     title.appendChild(svg);
-    title.appendChild(document.createTextNode(" " + (m("searchLabel").replace("$TEXT$", selectionText))));
+    var label = m(labelKey).replace("$TEXT$", titleText);
+    title.appendChild(document.createTextNode(" " + label));
     header.appendChild(title);
 
     var btns = document.createElement("span"); btns.className = "btns";
@@ -114,6 +129,12 @@
 
     var openBtn = document.createElement("button"); openBtn.className = "btn"; openBtn.textContent = m("openInTab");
     btns.appendChild(openBtn);
+
+    if (Object.keys(panels).length > 0) {
+      var closeAllBtn = document.createElement("button"); closeAllBtn.className = "btn"; closeAllBtn.textContent = m("closeAll");
+      btns.appendChild(closeAllBtn);
+      closeAllBtn.addEventListener("click", destroyAllPanels);
+    }
 
     var closeBtn = document.createElement("button"); closeBtn.className = "cls"; closeBtn.textContent = "\u00D7"; closeBtn.title = m("close");
     btns.appendChild(closeBtn);
@@ -132,7 +153,7 @@
     body.appendChild(copiedToast);
 
     var iframe = document.createElement("iframe");
-    iframe.src = searchUrl; iframe.title = "FindThis";
+    iframe.src = url; iframe.title = "FindThis";
     iframe.addEventListener("load", function () { loader.classList.add("h"); });
     body.appendChild(iframe);
 
@@ -143,20 +164,25 @@
     panel.appendChild(body);
     shadow.appendChild(panel);
 
-    // Position
-    var sel = document.getSelection();
-    if (sel && sel.rangeCount > 0) {
-      var rect = sel.getRangeAt(0).getBoundingClientRect();
-      var x = Math.max(0, Math.min(rect.left, window.innerWidth - pw));
-      var y = rect.bottom + 12;
-      if (y + ph > window.innerHeight) y = Math.max(0, rect.top - ph - 12);
+    // Position — cascade offset for multiple panels
+    var offset = (Object.keys(panels).length - 1) * 30;
+    if (posRect) {
+      var x = Math.max(0, Math.min(posRect.left + offset, window.innerWidth - pw));
+      var y = posRect.bottom + 12 + offset;
+      if (y + ph > window.innerHeight) y = Math.max(0, posRect.top - ph - 12);
       panel.style.left = x + "px"; panel.style.top = y + "px";
     } else {
-      panel.style.left = (window.innerWidth - pw) / 2 + "px";
-      panel.style.top = (window.innerHeight - ph) / 2 + "px";
+      panel.style.left = ((window.innerWidth - pw) / 2 + offset) + "px";
+      panel.style.top = ((window.innerHeight - ph) / 2 + offset) + "px";
     }
 
-    // --- Drag (left button only) ---
+    // Bring to front on click
+    panel.addEventListener("mousedown", function () {
+      panelCounter++;
+      host.style.zIndex = 2147483640 + panelCounter;
+    });
+
+    // Drag
     header.addEventListener("mousedown", function (e) {
       if (e.button !== 0 || e.target.closest(".cls") || e.target.closest(".btn")) return;
       var sx = e.clientX, sy = e.clientY;
@@ -166,7 +192,7 @@
       document.addEventListener("mousemove", mv); document.addEventListener("mouseup", up);
     });
 
-    // --- Resize ---
+    // Resize
     function resizer(handle, axis) {
       handle.addEventListener("mousedown", function (e) {
         if (e.button !== 0) return; e.preventDefault();
@@ -181,64 +207,84 @@
     }
     resizer(rzB, "y"); resizer(rzR, "x"); resizer(rzC, "xy");
 
-    // --- Close ---
-    closeBtn.addEventListener("click", destroyPanel);
+    closeBtn.addEventListener("click", function () { destroyPanel(id); });
 
-    // --- Copy URL ---
     copyBtn.addEventListener("click", function () {
-      var url = iframe.src;
-      if (!url || url === "about:blank") return;
-      navigator.clipboard.writeText(url).then(function () {
+      var u = iframe.src;
+      if (!u || u === "about:blank") return;
+      navigator.clipboard.writeText(u).then(function () {
         copiedToast.style.opacity = "1";
         setTimeout(function () { copiedToast.style.opacity = "0"; }, 1200);
       }).catch(function () {});
     });
 
-    // --- Open in tab (button) ---
     function openInTab(activate, closeWin) {
-      var url = iframe.src;
-      if (!url || url === "about:blank") return;
-      notifyBg("openInNewTab", { url: url, activate: activate, closePanel: closeWin });
-      if (closeWin) destroyPanel();
+      var u = iframe.src;
+      if (!u || u === "about:blank") return;
+      notifyBg("openInNewTab", { url: u, activate: activate, closePanel: closeWin });
+      if (closeWin) destroyPanel(id);
     }
     openBtn.addEventListener("click", function () { openInTab(true, true); });
 
-    // --- Middle click on HEADER (mouseup with button 1) ---
-    // Prevent browser auto-scroll on middle mousedown
-    header.addEventListener("mousedown", function (e) {
-      if (e.button === 1) e.preventDefault();
-    });
+    header.addEventListener("mousedown", function (e) { if (e.button === 1) e.preventDefault(); });
     header.addEventListener("mouseup", function (e) {
       if (e.button !== 1) return;
-      e.preventDefault();
-      e.stopPropagation();
-      if (currentSettings.middleClick === "close") {
-        openInTab(true, true);
-      } else {
-        openInTab(false, false);
-      }
+      e.preventDefault(); e.stopPropagation();
+      if (currentSettings.middleClick === "close") { openInTab(true, true); } else { openInTab(false, false); }
     });
 
-    // --- Escape ---
-    function onKey(e) { if (e.key === "Escape") { destroyPanel(); document.removeEventListener("keydown", onKey); } }
+    function onKey(e) { if (e.key === "Escape") { destroyPanel(id); document.removeEventListener("keydown", onKey); } }
     document.addEventListener("keydown", onKey);
 
     notifyBg("panelOpened");
+    return id;
   }
 
+  function getSelectionRect() {
+    var sel = document.getSelection();
+    if (sel && sel.rangeCount > 0) return sel.getRangeAt(0).getBoundingClientRect();
+    return null;
+  }
+
+  // --- Hover preview ---
+  function setupHoverPreview() {
+    document.addEventListener("mouseover", function (e) {
+      if (!currentSettings.hoverPreview) return;
+      var a = e.target.closest("a[href]");
+      if (!a) return;
+      var href = a.href;
+      if (!href || href.startsWith("javascript:") || href.startsWith("#")) return;
+
+      clearTimeout(hoverTimer);
+      hoverTimer = setTimeout(function () {
+        var rect = a.getBoundingClientRect();
+        buildPanel(href, new URL(href).hostname, "previewLabel", rect);
+      }, (currentSettings.hoverDelay || 2) * 1000);
+    });
+
+    document.addEventListener("mouseout", function (e) {
+      var a = e.target.closest("a[href]");
+      if (a) clearTimeout(hoverTimer);
+    });
+  }
+  setupHoverPreview();
+
+  // --- Messages ---
   browser.runtime.onMessage.addListener(function (msg) {
     if (msg.action === "openFindThis" && msg.searchUrl) {
-      if (document.body) {
-        createPanel(msg.searchUrl, msg.selectionText || "", msg.settings);
-      } else {
-        document.addEventListener("DOMContentLoaded", function () {
-          createPanel(msg.searchUrl, msg.selectionText || "", msg.settings);
-        });
-      }
+      if (msg.settings) currentSettings = Object.assign(currentSettings, msg.settings);
+      buildPanel(msg.searchUrl, msg.selectionText || "", "searchLabel", getSelectionRect());
       return Promise.resolve({ ok: true });
     }
-    if (msg.action === "closePanel") {
-      destroyPanel();
+    if (msg.action === "openPreview" && msg.url) {
+      if (msg.settings) currentSettings = Object.assign(currentSettings, msg.settings);
+      var hostname = "";
+      try { hostname = new URL(msg.url).hostname; } catch (e) { hostname = msg.url; }
+      buildPanel(msg.url, hostname, "previewLabel", null);
+      return Promise.resolve({ ok: true });
+    }
+    if (msg.action === "closeAllPanels") {
+      destroyAllPanels();
       return Promise.resolve({ ok: true });
     }
   });

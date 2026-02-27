@@ -71,6 +71,12 @@ select, input[type="number"] {
 select:focus, input[type="number"]:focus { border-color: var(--accent); }
 select { width: 100%; }
 
+.toggle-row {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 14px; cursor: pointer; margin: 6px 0;
+}
+.toggle-row input[type="checkbox"] { accent-color: var(--accent); width: 18px; height: 18px; }
+
 .size-row { display: flex; gap: 16px; }
 .size-field {
   display: flex; align-items: center; gap: 6px; font-size: 13px;

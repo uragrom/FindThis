@@ -1,9 +1,6 @@
 /**
  * FindThis — Background (Manifest V3)
- *
- * Middle-click on links inside the iframe:
- *   Firefox natively opens a new tab. We catch it via tabs.onCreated
- *   (openerTabId === host tab) and apply the middleClick setting.
+ * v1.2: multi-panel, link preview context menu, hover preview support.
  */
 (function () {
   "use strict";
@@ -21,11 +18,13 @@
     panelHeight: 420,
     middleClick: "close",
     searchEngine: "google",
-    linksInPanel: "yes"
+    linksInPanel: "yes",
+    hoverPreview: false,
+    hoverDelay: 2
   };
 
   var settings = Object.assign({}, DEFAULTS);
-  var findThisHostTabId = null;
+  var hostTabIds = new Set();
 
   function loadSettings() {
     return browser.storage.local.get(DEFAULTS).then(function (s) {
@@ -48,11 +47,7 @@
     return url.startsWith("http://") || url.startsWith("https://");
   }
 
-  function openSearchInNewTab(query) {
-    try { browser.tabs.create({ url: getSearchUrl(query) }); } catch (e) {}
-  }
-
-  function createContextMenu() {
+  function createContextMenus() {
     try {
       browser.contextMenus.create({
         id: "findthis-search",
@@ -60,20 +55,23 @@
         contexts: ["selection"]
       });
     } catch (e) {}
+    try {
+      browser.contextMenus.create({
+        id: "findthis-preview",
+        title: i18n("ctxPreview"),
+        contexts: ["link"]
+      });
+    } catch (e) {}
   }
 
-  createContextMenu();
+  createContextMenus();
   browser.runtime.onInstalled.addListener(function () {
-    browser.contextMenus.removeAll().then(createContextMenu).catch(createContextMenu);
+    browser.contextMenus.removeAll().then(createContextMenus).catch(createContextMenus);
   });
 
   browser.action.onClicked.addListener(function () {
     browser.runtime.openOptionsPage();
   });
-
-  function clearHostTab() {
-    findThisHostTabId = null;
-  }
 
   function ensureContentScript(tabId) {
     return Promise.all([
@@ -83,66 +81,74 @@
   }
 
   browser.contextMenus.onClicked.addListener(function (info, tab) {
-    if (info.menuItemId !== "findthis-search" || !info.selectionText) return;
-    var query = (info.selectionText || "").trim();
-    if (!query) return;
-
     if (!tab || !tab.id || !isInjectableTab(tab.url)) {
-      openSearchInNewTab(query);
+      if (info.menuItemId === "findthis-search" && info.selectionText) {
+        try { browser.tabs.create({ url: getSearchUrl(info.selectionText.trim()) }); } catch (e) {}
+      }
       return;
     }
 
-    ensureContentScript(tab.id).then(function () {
-      return new Promise(function (r) { setTimeout(r, 200); });
-    }).then(function () {
-      return browser.tabs.sendMessage(tab.id, {
-        action: "openFindThis",
-        searchUrl: getSearchUrl(query),
-        selectionText: query,
-        settings: settings
+    if (info.menuItemId === "findthis-search" && info.selectionText) {
+      var query = info.selectionText.trim();
+      if (!query) return;
+      ensureContentScript(tab.id).then(function () {
+        return new Promise(function (r) { setTimeout(r, 200); });
+      }).then(function () {
+        return browser.tabs.sendMessage(tab.id, {
+          action: "openFindThis",
+          searchUrl: getSearchUrl(query),
+          selectionText: query,
+          settings: settings
+        });
+      }).catch(function () {
+        try { browser.tabs.create({ url: getSearchUrl(query) }); } catch (e) {}
       });
-    }).catch(function () {
-      openSearchInNewTab(query);
-    });
+    }
+
+    if (info.menuItemId === "findthis-preview" && info.linkUrl) {
+      ensureContentScript(tab.id).then(function () {
+        return new Promise(function (r) { setTimeout(r, 200); });
+      }).then(function () {
+        return browser.tabs.sendMessage(tab.id, {
+          action: "openPreview",
+          url: info.linkUrl,
+          settings: settings
+        });
+      }).catch(function () {});
+    }
   });
 
-  // When a link inside the iframe is middle-clicked, Firefox creates a new tab.
-  // We detect it here and apply the user's middleClick preference.
   browser.tabs.onCreated.addListener(function (tab) {
-    if (findThisHostTabId == null) return;
-    if (tab.openerTabId !== findThisHostTabId) return;
+    if (!hostTabIds.size) return;
+    if (!tab.openerTabId || !hostTabIds.has(tab.openerTabId)) return;
 
     if (settings.middleClick === "close") {
-      // Activate the new tab and close the panel
       browser.tabs.update(tab.id, { active: true }).catch(function () {});
-      browser.tabs.sendMessage(findThisHostTabId, { action: "closePanel" }).catch(function () {});
-      clearHostTab();
+      browser.tabs.sendMessage(tab.openerTabId, { action: "closeAllPanels" }).catch(function () {});
+      hostTabIds.delete(tab.openerTabId);
     }
-    // If "background" — tab already opens in background, panel stays. Nothing to do.
   });
 
   browser.tabs.onRemoved.addListener(function (tabId) {
-    if (tabId === findThisHostTabId) clearHostTab();
+    hostTabIds.delete(tabId);
   });
 
   browser.runtime.onMessage.addListener(function (msg, sender) {
     if (msg.action === "panelOpened" && sender.tab) {
-      findThisHostTabId = sender.tab.id;
+      hostTabIds.add(sender.tab.id);
       return;
     }
-    if (msg.action === "panelClosed") {
-      if (sender.tab && sender.tab.id === findThisHostTabId) clearHostTab();
+    if (msg.action === "allPanelsClosed") {
+      if (sender.tab) hostTabIds.delete(sender.tab.id);
       return;
     }
     if (msg.action === "openInNewTab" && msg.url) {
-      var hostId = findThisHostTabId;
-      if (msg.closePanel) clearHostTab();
+      if (msg.closePanel && sender.tab) {
+        hostTabIds.delete(sender.tab.id);
+      }
       try {
         browser.tabs.create({ url: msg.url, active: msg.activate !== false });
       } catch (e) {}
-      if (msg.closePanel && sender.tab) {
-        browser.tabs.sendMessage(sender.tab.id, { action: "closePanel" }).catch(function () {});
-      }
       return;
     }
     if (msg.action === "getSettings") {
@@ -152,13 +158,14 @@
 
   browser.webRequest.onHeadersReceived.addListener(
     function (details) {
+      if (!hostTabIds.size) return;
       var headers = details.responseHeaders.filter(function (h) {
         var n = (h.name || "").toLowerCase();
         return n !== "x-frame-options" && n !== "frame-options";
       });
       return { responseHeaders: headers };
     },
-    { urls: ["*://*.google.com/*", "*://*.google.ru/*", "*://*.duckduckgo.com/*", "*://*.bing.com/*", "*://*.yandex.ru/*", "*://*.yandex.com/*"] },
+    { urls: ["<all_urls>"] },
     ["blocking", "responseHeaders"]
   );
 })();

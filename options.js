@@ -7,7 +7,9 @@
     panelHeight: 420,
     middleClick: "close",
     searchEngine: "google",
-    linksInPanel: "yes"
+    linksInPanel: "yes",
+    hoverPreview: false,
+    hoverDelay: 2
   };
 
   function msg(id) {
@@ -34,6 +36,8 @@
       document.querySelector('input[name="middleClick"][value="' + s.middleClick + '"]').checked = true;
       document.getElementById("searchEngine").value = s.searchEngine;
       document.querySelector('input[name="linksInPanel"][value="' + s.linksInPanel + '"]').checked = true;
+      document.getElementById("hoverPreview").checked = !!s.hoverPreview;
+      document.getElementById("hoverDelay").value = s.hoverDelay;
     });
   }
 
@@ -44,10 +48,13 @@
       panelHeight: parseInt(document.getElementById("panelHeight").value, 10) || DEFAULTS.panelHeight,
       middleClick: document.querySelector('input[name="middleClick"]:checked').value,
       searchEngine: document.getElementById("searchEngine").value,
-      linksInPanel: document.querySelector('input[name="linksInPanel"]:checked').value
+      linksInPanel: document.querySelector('input[name="linksInPanel"]:checked').value,
+      hoverPreview: document.getElementById("hoverPreview").checked,
+      hoverDelay: parseFloat(document.getElementById("hoverDelay").value) || DEFAULTS.hoverDelay
     };
     data.panelWidth = Math.max(300, Math.min(1200, data.panelWidth));
     data.panelHeight = Math.max(250, Math.min(900, data.panelHeight));
+    data.hoverDelay = Math.max(0.5, Math.min(10, data.hoverDelay));
     return browser.storage.local.set(data).then(function () {
       showToast();
     });

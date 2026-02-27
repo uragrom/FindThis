@@ -17,7 +17,6 @@
   };
 
   function m(id) { try { return browser.i18n.getMessage(id) || id; } catch (e) { return id; } }
-  function escapeHtml(s) { var d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
   function notifyBg(action, data) {
     try { browser.runtime.sendMessage(Object.assign({ action: action }, data || {})); } catch (e) {}
   }
@@ -97,8 +96,15 @@
     var header = document.createElement("div"); header.className = "hd";
 
     var title = document.createElement("span"); title.className = "ti";
-    title.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg> ' +
-      escapeHtml(m("searchLabel").replace("$TEXT$", selectionText));
+    var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 24 24"); svg.setAttribute("fill", "none"); svg.setAttribute("stroke-width", "2");
+    var circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    circle.setAttribute("cx", "11"); circle.setAttribute("cy", "11"); circle.setAttribute("r", "8");
+    var path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", "m21 21-4.35-4.35");
+    svg.appendChild(circle); svg.appendChild(path);
+    title.appendChild(svg);
+    title.appendChild(document.createTextNode(" " + (m("searchLabel").replace("$TEXT$", selectionText))));
     header.appendChild(title);
 
     var btns = document.createElement("span"); btns.className = "btns";
@@ -109,7 +115,7 @@
     var openBtn = document.createElement("button"); openBtn.className = "btn"; openBtn.textContent = m("openInTab");
     btns.appendChild(openBtn);
 
-    var closeBtn = document.createElement("button"); closeBtn.className = "cls"; closeBtn.innerHTML = "&#215;"; closeBtn.title = m("close");
+    var closeBtn = document.createElement("button"); closeBtn.className = "cls"; closeBtn.textContent = "\u00D7"; closeBtn.title = m("close");
     btns.appendChild(closeBtn);
 
     header.appendChild(btns);
@@ -118,7 +124,8 @@
     var body = document.createElement("div"); body.className = "bd";
 
     var loader = document.createElement("div"); loader.className = "ld";
-    loader.innerHTML = '<div class="sp"></div>';
+    var spinner = document.createElement("div"); spinner.className = "sp";
+    loader.appendChild(spinner);
     body.appendChild(loader);
 
     var copiedToast = document.createElement("div"); copiedToast.className = "cp"; copiedToast.textContent = m("copied");

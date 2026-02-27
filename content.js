@@ -1,6 +1,6 @@
 /**
  * FindThis — Content Script
- * v1.2: multiple panels, link preview, hover-to-preview.
+ * v1.3.1: fix auto-close logic, fix null title.
  */
 (function () {
   "use strict";
@@ -11,9 +11,14 @@
   var panels = {};
   var currentSettings = {
     theme: "auto", panelWidth: 520, panelHeight: 420,
-    middleClick: "close", hoverPreview: false, hoverDelay: 2
+    panelOpacity: 1,
+    useCustomColors: false, customBg: "#ffffff", customFg: "#333333",
+    customHeader: "#f8f9fa", customAccent: "#1a73e8",
+    middleClick: "close", hoverPreview: false, hoverDelay: 2,
+    hoverAutoClose: false, allAutoClose: false
   };
   var hoverTimer = null;
+  var currentHoverLink = null;
 
   function loadSettings() {
     try {
@@ -25,9 +30,13 @@
   loadSettings();
   browser.storage.onChanged.addListener(function () { loadSettings(); });
 
-  function m(id) { try { return browser.i18n.getMessage(id) || id; } catch (e) { return id; } }
+  function m(id, subs) { try { return browser.i18n.getMessage(id, subs) || id; } catch (e) { return id; } }
   function notifyBg(action, data) {
     try { browser.runtime.sendMessage(Object.assign({ action: action }, data || {})); } catch (e) {}
+  }
+
+  function safeHostname(url) {
+    try { return new URL(url).hostname || url; } catch (e) { return url; }
   }
 
   function isDark(theme) {
@@ -37,6 +46,20 @@
   }
 
   function getColors(dark) {
+    if (currentSettings.useCustomColors) {
+      var bg = currentSettings.customBg || "#ffffff";
+      var fg = currentSettings.customFg || "#333333";
+      var hdr = currentSettings.customHeader || "#f8f9fa";
+      var acc = currentSettings.customAccent || "#1a73e8";
+      return {
+        bg: bg, header: hdr, border: dark ? "#555" : "#d0d5da", fg: fg,
+        fg2: fg, btnBg: bg, btnBorder: dark ? "#555" : "#d0d5da",
+        btnHover: hdr, closeBg: "transparent", closeHover: hdr,
+        body: bg, loader: bg, spinBorder: dark ? "#444" : "#e0e3e6",
+        spinTop: acc, accent: acc, resize: "rgba(128,128,128,.1)",
+        shadow: dark ? .35 : .18
+      };
+    }
     return dark
       ? { bg:"#2b2b2b", header:"#333", border:"#444", fg:"#ddd", fg2:"#aaa", btnBg:"#3a3a3a", btnBorder:"#555",
           btnHover:"#4a4a4a", closeBg:"#444", closeHover:"#555", body:"#252525", loader:"#333",
@@ -47,6 +70,8 @@
   }
 
   function destroyPanel(id) {
+    var p = panels[id];
+    if (p && p.autoCloseCleanup) p.autoCloseCleanup();
     var el = document.getElementById(id);
     if (el) el.remove();
     delete panels[id];
@@ -57,10 +82,11 @@
     Object.keys(panels).forEach(destroyPanel);
   }
 
-  function buildPanel(url, titleText, labelKey, posRect) {
+  function buildPanel(url, titleText, labelKey, posRect, isHoverPanel) {
     var dark = isDark(currentSettings.theme);
     var pw = currentSettings.panelWidth || 520;
     var ph = currentSettings.panelHeight || 420;
+    var opacity = currentSettings.panelOpacity != null ? currentSettings.panelOpacity : 1;
     var c = getColors(dark);
     var id = "findthis-panel-" + (++panelCounter);
 
@@ -70,14 +96,15 @@
     (document.body || document.documentElement).appendChild(host);
 
     var shadow = host.attachShadow({ mode: "open" });
-    panels[id] = { host: host, shadow: shadow };
+    panels[id] = { host: host, shadow: shadow, isHover: !!isHoverPanel };
 
     var style = document.createElement("style");
     style.textContent = [
       ":host{position:fixed;top:0;left:0;width:0;height:0;z-index:2147483647;pointer-events:none}",
       ".ft{position:fixed;width:"+pw+"px;height:"+ph+"px;min-width:300px;min-height:260px;background:"+c.bg+";border-radius:12px;" +
         "box-shadow:0 12px 40px rgba(0,0,0,"+c.shadow+"),0 0 0 1px "+c.border+";" +
-        "display:flex;flex-direction:column;overflow:hidden;font-family:system-ui,-apple-system,sans-serif;pointer-events:auto;z-index:2147483647}",
+        "display:flex;flex-direction:column;overflow:hidden;font-family:system-ui,-apple-system,sans-serif;pointer-events:auto;z-index:2147483647;" +
+        "opacity:"+opacity+";transition:opacity .15s}",
       ".hd{display:flex;align-items:center;justify-content:space-between;padding:7px 8px 7px 12px;" +
         "background:"+c.header+";border-bottom:1px solid "+c.border+";cursor:move;user-select:none;flex-shrink:0}",
       ".ti{display:flex;align-items:center;gap:7px;color:"+c.fg+";font-size:13px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:50%}",
@@ -118,7 +145,8 @@
     pth.setAttribute("d", "m21 21-4.35-4.35");
     svg.appendChild(circ); svg.appendChild(pth);
     title.appendChild(svg);
-    var label = m(labelKey).replace("$TEXT$", titleText);
+    var safeTitle = (titleText != null && titleText !== "") ? String(titleText) : "";
+    var label = m(labelKey, [safeTitle]);
     title.appendChild(document.createTextNode(" " + label));
     header.appendChild(title);
 
@@ -164,7 +192,6 @@
     panel.appendChild(body);
     shadow.appendChild(panel);
 
-    // Position — cascade offset for multiple panels
     var offset = (Object.keys(panels).length - 1) * 30;
     if (posRect) {
       var x = Math.max(0, Math.min(posRect.left + offset, window.innerWidth - pw));
@@ -176,7 +203,6 @@
       panel.style.top = ((window.innerHeight - ph) / 2 + offset) + "px";
     }
 
-    // Bring to front on click
     panel.addEventListener("mousedown", function () {
       panelCounter++;
       host.style.zIndex = 2147483640 + panelCounter;
@@ -236,6 +262,49 @@
     function onKey(e) { if (e.key === "Escape") { destroyPanel(id); document.removeEventListener("keydown", onKey); } }
     document.addEventListener("keydown", onKey);
 
+    // --- Auto-close ---
+    var shouldAutoClose = isHoverPanel ? currentSettings.hoverAutoClose : currentSettings.allAutoClose;
+    if (shouldAutoClose) {
+      var autoCloseTimer = null;
+      var LEAVE_GRACE = 600;
+      var enteredPanel = false;
+
+      function startLeaveTimer() {
+        clearTimeout(autoCloseTimer);
+        autoCloseTimer = setTimeout(function () { destroyPanel(id); }, LEAVE_GRACE);
+      }
+      function cancelLeaveTimer() { clearTimeout(autoCloseTimer); }
+
+      panel.addEventListener("mouseenter", function () {
+        enteredPanel = true;
+        cancelLeaveTimer();
+      });
+      panel.addEventListener("mouseleave", function () {
+        startLeaveTimer();
+      });
+
+      if (isHoverPanel && currentHoverLink) {
+        var link = currentHoverLink;
+        var onLink = true;
+
+        function linkEnter() { onLink = true; cancelLeaveTimer(); }
+        function linkLeave() {
+          onLink = false;
+          startLeaveTimer();
+        }
+        link.addEventListener("mouseenter", linkEnter);
+        link.addEventListener("mouseleave", linkLeave);
+
+        panels[id].autoCloseCleanup = function () {
+          clearTimeout(autoCloseTimer);
+          link.removeEventListener("mouseenter", linkEnter);
+          link.removeEventListener("mouseleave", linkLeave);
+        };
+      } else {
+        panels[id].autoCloseCleanup = function () { clearTimeout(autoCloseTimer); };
+      }
+    }
+
     notifyBg("panelOpened");
     return id;
   }
@@ -256,15 +325,19 @@
       if (!href || href.startsWith("javascript:") || href.startsWith("#")) return;
 
       clearTimeout(hoverTimer);
+      currentHoverLink = a;
       hoverTimer = setTimeout(function () {
         var rect = a.getBoundingClientRect();
-        buildPanel(href, new URL(href).hostname, "previewLabel", rect);
+        buildPanel(href, safeHostname(href), "previewLabel", rect, true);
       }, (currentSettings.hoverDelay || 2) * 1000);
     });
 
     document.addEventListener("mouseout", function (e) {
       var a = e.target.closest("a[href]");
-      if (a) clearTimeout(hoverTimer);
+      if (a) {
+        clearTimeout(hoverTimer);
+        currentHoverLink = null;
+      }
     });
   }
   setupHoverPreview();
@@ -273,14 +346,12 @@
   browser.runtime.onMessage.addListener(function (msg) {
     if (msg.action === "openFindThis" && msg.searchUrl) {
       if (msg.settings) currentSettings = Object.assign(currentSettings, msg.settings);
-      buildPanel(msg.searchUrl, msg.selectionText || "", "searchLabel", getSelectionRect());
+      buildPanel(msg.searchUrl, msg.selectionText || "", "searchLabel", getSelectionRect(), false);
       return Promise.resolve({ ok: true });
     }
     if (msg.action === "openPreview" && msg.url) {
       if (msg.settings) currentSettings = Object.assign(currentSettings, msg.settings);
-      var hostname = "";
-      try { hostname = new URL(msg.url).hostname; } catch (e) { hostname = msg.url; }
-      buildPanel(msg.url, hostname, "previewLabel", null);
+      buildPanel(msg.url, safeHostname(msg.url), "previewLabel", null, false);
       return Promise.resolve({ ok: true });
     }
     if (msg.action === "closeAllPanels") {

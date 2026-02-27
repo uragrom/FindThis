@@ -16,7 +16,7 @@
       <h2 data-i18n="optAppearance">Appearance</h2>
 
       <label data-i18n="optTheme">Theme</label>
-      <div class="radio-group" id="themeGroup">
+      <div class="radio-group">
         <label><input type="radio" name="theme" value="auto"> <span data-i18n="optThemeAuto">Auto (system)</span></label>
         <label><input type="radio" name="theme" value="light"> <span data-i18n="optThemeLight">Light</span></label>
         <label><input type="radio" name="theme" value="dark"> <span data-i18n="optThemeDark">Dark</span></label>
@@ -35,6 +35,36 @@
           <span>px</span>
         </div>
       </div>
+
+      <label data-i18n="optOpacity">Panel opacity</label>
+      <div class="slider-row">
+        <input type="range" id="panelOpacity" min="0.3" max="1" step="0.05">
+        <span id="opacityValue">1</span>
+      </div>
+
+      <label data-i18n="optCustomColors">Custom colors</label>
+      <label class="toggle-row">
+        <input type="checkbox" id="useCustomColors">
+        <span data-i18n="optUseCustom">Use custom colors instead of theme</span>
+      </label>
+      <div class="color-row" id="colorRow">
+        <div class="color-field">
+          <span data-i18n="optCustomBg">Background</span>
+          <input type="color" id="customBg" value="#ffffff">
+        </div>
+        <div class="color-field">
+          <span data-i18n="optCustomFg">Text</span>
+          <input type="color" id="customFg" value="#333333">
+        </div>
+        <div class="color-field">
+          <span data-i18n="optCustomHeader">Header</span>
+          <input type="color" id="customHeader" value="#f8f9fa">
+        </div>
+        <div class="color-field">
+          <span data-i18n="optCustomAccent">Accent</span>
+          <input type="color" id="customAccent" value="#1a73e8">
+        </div>
+      </div>
     </section>
 
     <section>
@@ -49,13 +79,13 @@
       </select>
 
       <label data-i18n="optMiddleClick">Middle click (scroll wheel)</label>
-      <div class="radio-group" id="mcGroup">
+      <div class="radio-group">
         <label><input type="radio" name="middleClick" value="close"> <span data-i18n="optMcClose">Open tab &amp; close mini-window</span></label>
         <label><input type="radio" name="middleClick" value="background"> <span data-i18n="optMcBackground">Open tab in background &amp; keep mini-window</span></label>
       </div>
 
       <label data-i18n="optLinksInPanel">Open new tabs inside mini-window</label>
-      <div class="radio-group" id="linksGroup">
+      <div class="radio-group">
         <label><input type="radio" name="linksInPanel" value="yes"> <span data-i18n="optLinksInPanelOn">Yes — intercept new tabs into panel</span></label>
         <label><input type="radio" name="linksInPanel" value="no"> <span data-i18n="optLinksInPanelOff">No — open normally</span></label>
       </div>
@@ -71,6 +101,20 @@
 
       <label data-i18n="optHoverDelay">Hover delay (seconds)</label>
       <input type="number" id="hoverDelay" min="0.5" max="10" step="0.5" style="width:90px;">
+    </section>
+
+    <section>
+      <h2 data-i18n="optAutoClose">Auto-close</h2>
+
+      <label class="toggle-row">
+        <input type="checkbox" id="hoverAutoClose">
+        <span data-i18n="optHoverAutoClose">Close hover preview when cursor leaves link and panel</span>
+      </label>
+
+      <label class="toggle-row">
+        <input type="checkbox" id="allAutoClose">
+        <span data-i18n="optAllAutoClose">Close any panel when cursor leaves it</span>
+      </label>
     </section>
 
     <div class="actions">

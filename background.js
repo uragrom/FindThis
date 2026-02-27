@@ -16,11 +16,19 @@
     theme: "auto",
     panelWidth: 520,
     panelHeight: 420,
+    panelOpacity: 1,
+    useCustomColors: false,
+    customBg: "#ffffff",
+    customFg: "#333333",
+    customHeader: "#f8f9fa",
+    customAccent: "#1a73e8",
     middleClick: "close",
     searchEngine: "google",
     linksInPanel: "yes",
     hoverPreview: false,
-    hoverDelay: 2
+    hoverDelay: 2,
+    hoverAutoClose: false,
+    allAutoClose: false
   };
 
   var settings = Object.assign({}, DEFAULTS);

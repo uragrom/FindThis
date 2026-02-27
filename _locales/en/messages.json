@@ -20,6 +20,13 @@
   "optWindowSize": { "message": "Default window size" },
   "optWidth": { "message": "Width" },
   "optHeight": { "message": "Height" },
+  "optCustomColors": { "message": "Custom colors" },
+  "optUseCustom": { "message": "Use custom colors instead of theme" },
+  "optCustomBg": { "message": "Background" },
+  "optCustomFg": { "message": "Text" },
+  "optCustomHeader": { "message": "Header" },
+  "optCustomAccent": { "message": "Accent" },
+  "optOpacity": { "message": "Panel opacity" },
   "optBehavior": { "message": "Behavior" },
   "optMiddleClick": { "message": "Middle click (scroll wheel)" },
   "optMcClose": { "message": "Open tab & close mini-window" },
@@ -33,5 +40,8 @@
   "optLinksInPanelOff": { "message": "No \u2014 open normally" },
   "optHoverPreview": { "message": "Hover preview" },
   "optHoverEnable": { "message": "Open preview when hovering over a link" },
-  "optHoverDelay": { "message": "Hover delay (seconds)" }
+  "optHoverDelay": { "message": "Hover delay (seconds)" },
+  "optAutoClose": { "message": "Auto-close" },
+  "optHoverAutoClose": { "message": "Close hover preview when cursor leaves link and panel" },
+  "optAllAutoClose": { "message": "Close any panel when cursor leaves it" }
 }
